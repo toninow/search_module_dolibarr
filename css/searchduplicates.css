@@ -1,0 +1,25 @@
+/* CSS nativo para el módulo SearchDuplicates */
+/* Este archivo se carga automáticamente por Dolibarr cuando el módulo está activo */
+
+/* Icono personalizado para el menú superior */
+div.mainmenu.search_duplicates {
+    background-image: url(/dolibarr/custom/searchduplicates/img/searchdpls.png) !important;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 32px 32px;
+    filter: brightness(0) invert(1); /* Convierte el icono a blanco */
+}
+
+/* Deshabilitar el icono Font Awesome por defecto */
+div.mainmenu.search_duplicates:before {
+    content: '' !important;
+}
+
+/* Asegurar que el icono se vea correctamente en diferentes temas */
+div.mainmenu.search_duplicates .tmenuimage {
+    background-image: url(/dolibarr/custom/searchduplicates/img/searchdpls.png) !important;
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 32px 32px;
+    filter: brightness(0) invert(1);
+}

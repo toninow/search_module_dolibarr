@@ -1,0 +1,116 @@
+# Search Duplicates Module Language File - Spanish
+
+# Module info
+SearchDuplicates=Sistema de Búsqueda de Duplicados
+ModuleSetup=Configuración del Módulo
+BackToModuleList=Volver a la Lista de Módulos
+Setup=Configuración
+Modules=Módulos
+
+# Parameters
+Parameter=Parámetro
+Value=Valor
+Description=Descripción
+ModuleName=Nombre del Módulo
+ModuleNameDesc=Nombre del módulo de búsqueda de duplicados
+Version=Versión
+VersionDesc=Versión actual del módulo
+Author=Autor
+AuthorDesc=Desarrollador del módulo
+Status=Estado
+StatusDesc=Estado actual del módulo
+Enabled=Habilitado
+Disabled=Deshabilitado
+
+# Module info
+ModuleInfo=Información del Módulo
+ModuleInfoDesc=Sistema avanzado de detección de productos duplicados desarrollado por Antonio Benalcázar Musical Princesa. Este módulo permite identificar productos duplicados en tu catálogo de Dolibarr.
+
+# Quick access
+QuickAccess=Acceso Rápido
+AccessSearchDuplicates=Acceder al Buscador de Duplicados
+
+# Search interface
+SearchTitle=Búsqueda Avanzada de Productos Duplicados
+SearchPlaceholder=Buscar productos...
+SearchButton=Buscar
+SearchType=Tipo de Búsqueda
+SearchTypeGeneral=Búsqueda General
+SearchTypeReference=Por Referencia
+SearchTypeName=Por Nombre
+SearchTypeEAN=Por Código EAN
+
+# Results
+ResultsTitle=Resultados de la Búsqueda
+NoResults=No se encontraron resultados
+OriginalProduct=Producto Original
+DuplicateProducts=Productos Duplicados
+UniqueProducts=Productos Únicos
+Similarity=Similitud
+Actions=Acciones
+ViewDetail=Ver Detalle
+Edit=Editar
+Delete=Eliminar
+
+# Product details
+ProductDetails=Detalles del Producto
+ProductID=ID del Producto
+ProductName=Nombre del Producto
+ProductReference=Referencia del Producto
+ProductDescription=Descripción del Producto
+ProductStatus=Estado del Producto
+ProductDate=Fecha de Creación
+ProductPrice=Precio
+ProductStock=Stock
+Active=Activo
+Inactive=Inactivo
+
+# Messages
+ConfirmDelete=¿Estás seguro de eliminar este producto?
+ProductDeleted=Producto eliminado correctamente
+ErrorOccurred=Ocurrió un error
+SearchTermRequired=El término de búsqueda es requerido
+
+# Statistics
+Statistics=Estadísticas
+TotalProducts=Total de Productos
+DuplicateGroups=Grupos de Duplicados
+UniqueProductsCount=Productos Únicos
+DuplicateProductsCount=Productos Duplicados
+
+# Configuration
+SearchDuplicatesConfiguration=Configuración de Búsqueda de Duplicados
+EnableAutoScan=Habilitar Escaneo Automático
+EnableAutoScanDesc=Activa el escaneo automático de productos duplicados al crear o modificar productos
+SimilarityThreshold=Umbral de Similitud
+SimilarityThresholdDesc=Porcentaje de similitud requerido para considerar dos productos como duplicados (0-100%)
+ScanFields=Campos a Escanear
+ScanFieldsDesc=Lista de campos separados por comas para analizar (ej: name,description,ref)
+NotificationEmail=Email de Notificación
+NotificationEmailDesc=Dirección de email para recibir notificaciones de duplicados encontrados
+
+# Buttons and Actions
+Save=Guardar
+AccessSearchDuplicates=Acceder al Buscador
+BackToModuleList=Volver al Listado de Módulos
+CurrentStatus=Estado Actual
+ModuleStatus=Estado del Módulo
+Save=Guardar
+ConfigurationUpdated=Configuración actualizada correctamente
+ErrorUpdatingConfiguration=Error al actualizar la configuración
+ErrorSimilarityThreshold=El umbral de similitud debe estar entre 0 y 100
+
+# Module Management
+ModuleManagement=Gestión del Módulo
+ModuleManagementDesc=Herramientas para gestionar el módulo de búsqueda de duplicados
+DeleteModule=Eliminar Módulo
+ConfirmModuleDeletion=¿Estás seguro de que quieres eliminar completamente este módulo? Esta acción no se puede deshacer.
+ModuleDeleted=Módulo eliminado correctamente
+ErrorDeletingModule=Error al eliminar el módulo
+ModuleDeletionCancelled=Eliminación del módulo cancelada
+
+# Module Data
+ModuleData=Datos del Módulo
+QuickActions=Acciones Rápidas
+AccessModule=Acceder al Módulo
+Type=Tipo

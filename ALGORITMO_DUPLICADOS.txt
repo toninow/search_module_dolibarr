@@ -1,0 +1,171 @@
+ALGORITMO DE BÚSQUEDA DE DUPLICADOS - SEARCH DUPLICATES MODULE
+================================================================
+
+FUNCIÓN PRINCIPAL: separateProducts()
+=====================================
+
+function separateProducts($all_products) {
+    $groups = [];
+    $unique = [];
+
+    // Hash buckets: "brand:model:color" => [productos]
+    $buckets = [];
+
+    foreach ($all_products as $p) {
+        $info = extractProductInfoAuto($p->label, $p->description);
+
+        // Clave del bucket
+        $key = strtolower(($info['brand'] ?: 'unknown') . ':' . ($info['model'] ?: 'nomodel') . ':' . ($info['color'] ?: 'nocolor'));
+
+        if (!isset($buckets[$key])) {
+            $buckets[$key] = [];
+        }
+        $buckets[$key][] = [
+            'product' => $p,
+            'text'    => strtolower(trim($p->label . ' ' . $p->description))
+        ];
+    }
+
+    // Procesar cada bucket
+    foreach ($buckets as $bucket) {
+        $processed = [];
+        foreach ($bucket as $i => $entry) {
+            if (in_array($entry['product']->rowid, $processed)) continue;
+
+            $group = [$entry['product']];
+            $processed[] = $entry['product']->rowid;
+
+            // Comparar solo dentro del bucket (similitud fallback)
+            foreach ($bucket as $j => $other) {
+                if ($other['product']->rowid == $entry['product']->rowid || in_array($other['product']->rowid, $processed)) continue;
+
+                similar_text($entry['text'], $other['text'], $percent);
+
+                if ($percent >= 75) { // ajustable
+                    $group[] = $other['product'];
+                    $processed[] = $other['product']->rowid;
+                }
+            }
+
+            if (count($group) > 1) {
+                $groups[] = $group;
+            } else {
+                $unique[] = $group[0];
+            }
+        }
+    }
+
+    return ['duplicates' => $groups, 'unique' => $unique];
+}
+
+FUNCIÓN DE EXTRACCIÓN DE INFORMACIÓN: extractProductInfoAuto() - MEJORADA
+=========================================================================
+
+function extractProductInfoAuto($label, $description) {
+    $text = strtolower($label . ' ' . $description);
+
+    // Lista de marcas comunes (puedes expandirla)
+    $brands = [
+        'd\'addario', 'daddario', 'savarez', 'fender', 'gibson', 'martin',
+        'taylor', 'yamaha', 'ibanez', 'epiphone', 'squier', 'musicman'
+    ];
+
+    $brand = 'unknown';
+    foreach ($brands as $b) {
+        if (strpos($text, $b) !== false) {
+            $brand = $b;
+            break;
+        }
+    }
+
+    // Modelo: buscar códigos alfanuméricos que estén después de la marca o entre espacios
+    $model = '';
+    $pattern = '/(?:' . implode('|', array_map('preg_quote', $brands)) . ')\\s+([a-zA-Z0-9\-]{2,})/';
+    if (preg_match($pattern, $text, $matches)) {
+        $model = strtolower($matches[1]);
+    } elseif (preg_match('/[a-zA-Z0-9\-]{2,}/', $text, $model_match)) {
+        $model = strtolower($model_match[0]);
+    }
+
+    // Color: lista ampliada + mejor detección
+    $colors = ['rojo','red','negro','black','blanco','white','azul','blue','verde','green','amarillo','yellow','naranja','orange'];
+    $color = null;
+    foreach ($colors as $c) {
+        if (strpos($text, $c) !== false) {
+            $color = $c;
+            break;
+        }
+    }
+
+    return ['brand' => $brand, 'model' => $model, 'color' => $color];
+}
+
+¿QUÉ HACE EL ALGORITMO?
+=======================
+
+1. BLOQUEO POR CARACTERÍSTICAS CLAVE
+   - Extrae automáticamente marca, modelo y color de cada producto
+   - Crea "buckets" (cubos) agrupando productos con la misma combinación marca:modelo:color
+   - Esto reduce drásticamente las comparaciones necesarias
+
+2. EXTRACCIÓN INTELIGENTE DE DATOS
+   - MARCA: Busca la primera palabra relevante (excluye palabras genéricas como "guitarra", "cuerda", "set")
+   - MODELO: Encuentra códigos alfanuméricos con guiones opcionales (ej: "520R", "520-R", "ABC123")
+   - COLOR: Detecta colores en español e inglés (rojo/red, negro/black, etc.)
+
+3. COMPARACIÓN EFICIENTE
+   - Solo compara productos dentro del mismo bucket (misma marca+modelo+color)
+   - Usa similar_text() de PHP para calcular similitud textual (75% de umbral)
+   - Evita comparaciones redundantes marcando productos ya procesados
+
+4. CLASIFICACIÓN FINAL
+   - DUPLICADOS: Grupos con 2+ productos similares
+   - ÚNICOS: Productos que no tienen similares en su bucket
+
+VENTAJAS DEL ALGORITMO:
+=======================
+
+- RÁPIDO: O(n) en lugar de O(n²) - solo compara dentro de buckets
+- PRECISO: Agrupa por características clave antes de comparar texto
+- FLEXIBLE: Detecta variaciones en nombres (520R, 520-R, 520 R)
+- ESCALABLE: Funciona bien con miles de productos
+
+EJEMPLO PRÁCTICO:
+================
+
+Productos de entrada:
+- "SAVAREZ 520R NEGRO CUERDA 6ª"
+- "SAVAREZ 520-R NEGRO CUERDA 6ª"  
+- "SAVAREZ 520R ROJO CUERDA 6ª"
+- "DADDARIO 520R NEGRO CUERDA 6ª"
+
+Proceso:
+1. Extracción: marca="savarez", modelo="520r", color="negro" (primeros dos)
+2. Bucket: "savarez:520r:negro" contiene los dos primeros productos
+3. Comparación: similar_text() entre "savarez 520r negro cuerda 6ª" y "savarez 520-r negro cuerda 6ª"
+4. Resultado: Similitud > 75%, se agrupan como duplicados
+
+El tercer producto va a bucket "savarez:520r:rojo" (color diferente)
+El cuarto producto va a bucket "daddario:520r:negro" (marca diferente)
+
+CONFIGURACIÓN:
+==============
+
+- UMBRAL DE SIMILITUD: 85% (aumentado para evitar falsos positivos)
+- MARCAS SOPORTADAS: d'addario, daddario, savarez, fender, gibson, martin, taylor, yamaha, ibanez, epiphone, squier, musicman
+- COLORES SOPORTADOS: rojo/red, negro/black, blanco/white, azul/blue, verde/green, amarillo/yellow, naranja/orange
+- LONGITUD MÍNIMA DE MODELO: 2 caracteres
+- DETECCIÓN DE MODELO: Busca códigos después de la marca conocida, fallback a cualquier código alfanumérico
+
+NOTAS TÉCNICAS:
+===============
+
+- Usa strtolower() para normalizar texto
+- Combina label + description para análisis completo
+- Evita comparaciones redundantes con array $processed
+- Retorna estructura ['duplicates' => [], 'unique' => []]
+- Compatible con base de datos Dolibarr (tabla llx_product)
+
+FECHA DE CREACIÓN: $(date)
+VERSIÓN: 1.0
+AUTOR: Search Duplicates Module

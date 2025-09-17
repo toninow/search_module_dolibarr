@@ -1,0 +1,46 @@
+# Advanced Search by Antonio - English Language File
+
+# Module name
+BusquedaAvanzada=Advanced Search
+BusquedaAvanzadaSetup=Advanced Search Setup
+SearchDuplicates=Duplicate Detection System
+SearchDuplicatesSetup=Duplicate Detection System Setup
+SearchDuplicatesDesc=Advanced duplicate product detection system developed by Antonio Benalcázar Musical Princesa
+
+# Common terms
+Search=Search
+SearchTerm=Search Term
+EnterSearchTerm=Enter search term...
+Product=Product
+Reference=Reference
+Price=Price
+Status=Status
+Active=Active
+Inactive=Inactive
+Duplicate=Duplicate
+Yes=Yes
+No=No
+Actions=Actions
+View=View
+Save=Save
+BackToModuleList=Back to module list
+NoResultsFound=No results found
+Limit=Limit
+Parameter=Parameter
+Value=Value
+Description=Description
+
+# Configuration
+SearchDuplicatesEnabled=Search Duplicates Enabled
+SearchDuplicatesEnabledDesc=Enable or disable the search duplicates functionality
+
+# Error messages
+Error=Error
+SetupSaved=Setup saved successfully
+ProductDeleted=Product deleted successfully
+ErrorDeletingProduct=Error deleting product
+ConfirmDelete=Are you sure you want to delete this product?
+ProductDetail=Product Detail
+ProductNotFound=Product not found
+ViewDetail=View Detail
+Edit=Edit

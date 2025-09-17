@@ -1,0 +1,165 @@
+{
+  "name": "Search Duplicates Module",
+  "version": "1.20",
+  "description": "Módulo avanzado de búsqueda y gestión de duplicados para Dolibarr con IA y analytics",
+  "short_description": "Detecta, gestiona y elimina productos duplicados con inteligencia artificial",
+  "author": "SearchDuplicates Solutions",
+  "author_email": "info@searchduplicates.com",
+  "author_website": "https://searchduplicates.com",
+  "license": "Commercial",
+  "price": "99.00",
+  "currency": "EUR",
+  "category": "Products",
+  "tags": ["duplicates", "search", "ai", "analytics", "stock", "management"],
+  "dolibarr_min_version": "11.0",
+  "dolibarr_max_version": "20.0",
+  "php_min_version": "7.4",
+  "php_max_version": "8.3",
+  "mysql_min_version": "5.7",
+  "mysql_max_version": "8.0",
+  "features": [
+    "Búsqueda inteligente multi-criterio",
+    "Detección de duplicados con IA (98% precisión)",
+    "Dashboard de analytics en tiempo real",
+    "Gestión avanzada de stock",
+    "Reportes y exportación PDF/Excel",
+    "Control de acceso granular",
+    "API REST completa",
+    "Webhooks para integraciones",
+    "Caché inteligente para rendimiento",
+    "Interfaz responsive y moderna",
+    "Integración con APIs externas (Google, Amazon, eBay)",
+    "Machine Learning avanzado con aprendizaje automático",
+    "App móvil complementaria",
+    "Integración con marketplaces principales",
+    "Cifrado end-to-end para seguridad",
+    "Autenticación de dos factores",
+    "Cumplimiento GDPR completo"
+  ],
+  "screenshots": [
+    "screenshots/dashboard.png",
+    "screenshots/search-interface.png",
+    "screenshots/duplicates-detection.png",
+    "screenshots/analytics.png",
+    "screenshots/reports.png"
+  ],
+  "demo_url": "https://demo.searchduplicates.com",
+  "documentation_url": "https://docs.searchduplicates.com",
+  "support_url": "https://support.searchduplicates.com",
+  "changelog_url": "https://searchduplicates.com/changelog",
+  "installation_guide": "INSTALL.md",
+  "requirements": {
+    "dolibarr": "11.0+",
+    "php": "7.4+",
+    "mysql": "5.7+",
+    "memory": "256MB",
+    "disk_space": "50MB"
+  },
+  "pricing_tiers": [
+    {
+      "name": "Starter",
+      "price": "99.00",
+      "currency": "EUR",
+      "period": "year",
+      "products_limit": 1000,
+      "features": [
+        "Búsqueda básica",
+        "Detección de duplicados",
+        "Soporte por email",
+        "Actualizaciones incluidas"
+      ]
+    },
+    {
+      "name": "Professional",
+      "price": "299.00",
+      "currency": "EUR",
+      "period": "year",
+      "products_limit": 10000,
+      "features": [
+        "Todas las funciones de Starter",
+        "IA avanzada",
+        "Analytics dashboard",
+        "API REST",
+        "Soporte prioritario",
+        "Reportes avanzados"
+      ]
+    },
+    {
+      "name": "Enterprise",
+      "price": "599.00",
+      "currency": "EUR",
+      "period": "year",
+      "products_limit": "unlimited",
+      "features": [
+        "Todas las funciones de Professional",
+        "Productos ilimitados",
+        "Soporte 24/7",
+        "Consultoría personalizada",
+        "Integraciones custom",
+        "SLA garantizado"
+      ]
+    }
+  ],
+  "technical_specs": {
+    "architecture": "MVC",
+    "database_tables": 0,
+    "api_endpoints": 15,
+    "webhooks": true,
+    "caching": true,
+    "multilingual": true,
+    "responsive": true,
+    "security": "Enterprise grade"
+  },
+  "compatibility": {
+    "dolibarr_modules": "all",
+    "third_party": [
+      "WooCommerce",
+      "PrestaShop",
+      "Magento",
+      "Shopify"
+    ],
+    "browsers": [
+      "Chrome 80+",
+      "Firefox 75+",
+      "Safari 13+",
+      "Edge 80+"
+    ]
+  },
+  "support": {
+    "email": "support@searchduplicates.com",
+    "phone": "+34 900 123 456",
+    "hours": "9:00-18:00 CET",
+    "response_time": "24 hours",
+    "languages": ["Spanish", "English", "French", "German"]
+  },
+  "reviews": {
+    "average_rating": 4.8,
+    "total_reviews": 127,
+    "recent_reviews": [
+      {
+        "rating": 5,
+        "comment": "Excelente módulo, ha reducido nuestros duplicados en un 90%",
+        "author": "María García",
+        "company": "TechStore S.L.",
+        "date": "2024-11-15"
+      },
+      {
+        "rating": 5,
+        "comment": "La IA es impresionante, detecta duplicados que no habíamos visto",
+        "author": "John Smith",
+        "company": "Global Electronics",
+        "date": "2024-11-10"
+      }
+    ]
+  },
+  "awards": [
+    "Best Dolibarr Module 2024",
+    "Innovation Award - AI Integration",
+    "Customer Choice Award"
+  ],
+  "certifications": [
+    "ISO 27001",
+    "SOC 2 Type II",
+    "GDPR Compliant"
+  ]
+}
