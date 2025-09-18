@@ -504,10 +504,10 @@ if (!isset($_SESSION['dup_cache'][$cache_key])) {
     ];
 }
 
-$confirmed_dups = $_SESSION['dup_cache'][$cache_key]['confirmed_dups'];
-$possible_dups = $_SESSION['dup_cache'][$cache_key]['possible_dups'];
-$uniq  = $_SESSION['dup_cache'][$cache_key]['uniq'];
-$count_filtered = $_SESSION['dup_cache'][$cache_key]['count_filtered'];
+$confirmed_dups = $_SESSION['dup_cache'][$cache_key]['confirmed_dups'] ?? [];
+$possible_dups = $_SESSION['dup_cache'][$cache_key]['possible_dups'] ?? [];
+$uniq  = $_SESSION['dup_cache'][$cache_key]['uniq'] ?? [];
+$count_filtered = $_SESSION['dup_cache'][$cache_key]['count_filtered'] ?? 0;
 
 // ====== Paginación ======
 function paginate_array(array $arr, int $page, int $per_page) {
@@ -887,15 +887,15 @@ print '</div>'; // Cerrar search-form-container
 // Contenedor de pestañas
 print '<div class="tabs-container">';
 print '<div class="stats-bar">';
-print '📊 Cargados: <strong>'.$count_filtered.'</strong> · Confirmados: <strong>'.count($confirmed_dups).'</strong> · Posibles: <strong>'.count($possible_dups).'</strong> · Únicos: <strong>'.count($uniq).'</strong>';
+print '📊 Cargados: <strong>'.$count_filtered.'</strong> · Confirmados: <strong>'.count($confirmed_dups ?? []).'</strong> · Posibles: <strong>'.count($possible_dups ?? []).'</strong> · Únicos: <strong>'.count($uniq ?? []).'</strong>';
 print '</div>';
 
 print '<div class="tabsAction">';
 $base = dol_escape_htmltag($_SERVER["PHP_SELF"]).'?per_page='.$per_page.'&limit='.$limit.'&product_id='.urlencode($product_id_raw).
         '&product_ean='.urlencode($product_ean).'&product_ref='.urlencode($product_ref).'&product_name='.urlencode($product_name);
-print '<a class="butAction'.($tab==='unique'?'Refused':'').'" href="'.$base.'&tab=unique&page=1">📦 Únicos ('.count($uniq).')</a> ';
-print '<a class="butAction'.($tab==='possible'?'Refused':'').'" href="'.$base.'&tab=possible&page=1">⚠️ Posibles ('.count($possible_dups).')</a> ';
-print '<a class="butAction'.($tab==='confirmed'?'Refused':'').'" href="'.$base.'&tab=confirmed&page=1">✅ Confirmados ('.count($confirmed_dups).')</a>';
+print '<a class="butAction'.($tab==='unique'?'Refused':'').'" href="'.$base.'&tab=unique&page=1">📦 Únicos ('.count($uniq ?? []).')</a> ';
+print '<a class="butAction'.($tab==='possible'?'Refused':'').'" href="'.$base.'&tab=possible&page=1">⚠️ Posibles ('.count($possible_dups ?? []).')</a> ';
+print '<a class="butAction'.($tab==='confirmed'?'Refused':'').'" href="'.$base.'&tab=confirmed&page=1">✅ Confirmados ('.count($confirmed_dups ?? []).')</a>';
 print '</div>';
 
 // Render con paginación
@@ -918,9 +918,9 @@ print '<div class="content-tabs">';
 if (isset($_GET['debug'])) {
     print '<div style="background: #ffeb3b; padding: 10px; margin: 10px 0; border: 2px solid #f57f17;">';
     print '<strong>DEBUG:</strong> Pestaña actual = "' . $tab . '" | ';
-    print 'Únicos = ' . count($uniq) . ' | ';
-    print 'Posibles = ' . count($possible_dups) . ' | ';
-    print 'Confirmados = ' . count($confirmed_dups);
+    print 'Únicos = ' . count($uniq ?? []) . ' | ';
+    print 'Posibles = ' . count($possible_dups ?? []) . ' | ';
+    print 'Confirmados = ' . count($confirmed_dups ?? []);
     print '</div>';
 }
     
@@ -932,47 +932,47 @@ if ($tab === 'unique') {
         print '<table class="noborder centpercent">';
         print '<tr class="liste_titre"><td style="width:6%">ID</td><td style="width:16%">Ref</td><td style="width:12%">EAN</td><td>Nombre</td><td style="width:10%">Acciones</td></tr>';
         foreach ($uniq_page as $p) {
-            print '<tr class="oddeven">';
+        print '<tr class="oddeven">';
             print '<td>'.(int)$p->rowid.'</td>';
             print '<td>'.dol_escape_htmltag($p->ref).'</td>';
             print '<td>'.dol_escape_htmltag($p->barcode).'</td>';
             print '<td>'.dol_escape_htmltag($p->label).'</td>';
             print '<td><a class="button" href="'.DOL_URL_ROOT.'/product/card.php?id='.(int)$p->rowid.'" target="_blank">Abrir</a></td>';
-            print '</tr>';
-        }
-        print '</table>';
+        print '</tr>';
+    }
+    print '</table>';
         render_pager($base, 'unique', $page, $max_page);
     }
 } elseif ($tab === 'possible') {
     if (empty($possible_page) || count($possible_page) == 0) {
         print '<div class="no-data">⚠️ No se encontraron posibles duplicados</div>';
-    } else {
+} else {
         render_pager($base, 'possible', $page, $max_page);
         $start = ($page - 1) * $per_page;
         foreach ($possible_page as $k => $group) {
             $idx = $start + $k + 1;
             print '<div class="group-duplicate" style="background: #fff3cd; border-color: #ffeaa7;">';
             print '<h4>⚠️ Posible Grupo #'.$idx.' ('.count($group).' productos) - Revisar</h4>';
-            print '<table class="noborder centpercent">';
+        print '<table class="noborder centpercent">';
             print '<tr class="liste_titre"><td style="width:6%">ID</td><td style="width:16%">Ref</td><td style="width:12%">EAN</td><td>Nombre</td><td style="width:10%">Acciones</td></tr>';
             foreach ($group as $p) {
-                print '<tr class="oddeven">';
+            print '<tr class="oddeven">';
                 print '<td>'.(int)$p->rowid.'</td>';
                 print '<td>'.dol_escape_htmltag($p->ref).'</td>';
                 print '<td>'.dol_escape_htmltag($p->barcode).'</td>';
                 print '<td>'.dol_escape_htmltag($p->label).'</td>';
                 print '<td><a class="button" href="'.DOL_URL_ROOT.'/product/card.php?id='.(int)$p->rowid.'" target="_blank">Abrir</a></td>';
-                print '</tr>';
-            }
-            print '</table>';
-            print '</div>';
+            print '</tr>';
         }
+        print '</table>';
+        print '</div>';
+    }
         render_pager($base, 'possible', $page, $max_page);
     }
 } else { // confirmed duplicates
     if (empty($confirmed_page) || count($confirmed_page) == 0) {
         print '<div class="no-data">✅ No se encontraron duplicados confirmados</div>';
-    } else {
+} else {
         render_pager($base, 'confirmed', $page, $max_page);
         $start = ($page - 1) * $per_page;
         foreach ($confirmed_page as $k => $group) {
@@ -991,8 +991,8 @@ if ($tab === 'unique') {
                 print '</tr>';
             }
             print '</table>';
-            print '</div>';
-        }
+    print '</div>';
+}
         render_pager($base, 'confirmed', $page, $max_page);
     }
 }
