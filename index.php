@@ -1,14 +1,16 @@
 <?php
-/*  Duplicados de productos (rápido y universal)
+/*  Duplicados de productos (rápido, universal y con menos falsos positivos)
  *  - Búsqueda por referencia / nombre / descripción / EAN
- *  - Detección de duplicados con heurísticas + BLOQUES (candidate sets)
+ *  - Detección con BLOQUES (EAN, REF, pref/suf, MODELO y firma de tokens RAROS) + heurísticas
+ *  - Modelo (p.ej. "520R") vuelve a ser ancla fuerte si es alfanumérico (≥4)
+ *  - Stopwords dinámicas + DF para detectar "tokens raros" y evitar emparejar por palabras comunes
  *  - Cache en $_SESSION por filtros (no recomputa al cambiar de pestaña)
  *  - Paginación en Únicos y Duplicados
  */
 
 // ====== Entorno Dolibarr ======
 if (!defined('DOL_DOCUMENT_ROOT')) {
-$res = 0;
+    $res = 0;
     if (!$res && file_exists("../main.inc.php")) $res = @include "../main.inc.php";
     if (!$res && file_exists("../../main.inc.php")) $res = @include "../../main.inc.php";
     if (!$res && file_exists("../../../main.inc.php")) $res = @include "../../../main.inc.php";
@@ -93,6 +95,7 @@ function mp_tokens_basic($text) {
     }
     return array_values(array_unique($out));
 }
+// stopwords dinámicas (solo set)
 function mp_dynamic_stopwords(array $products, float $thresholdFrac = 0.5) {
     $df = []; $N = max(1, count($products));
     foreach ($products as $p) {
@@ -104,11 +107,29 @@ function mp_dynamic_stopwords(array $products, float $thresholdFrac = 0.5) {
     foreach ($df as $t => $cnt) if ($cnt / $N >= $thresholdFrac) $dyn[$t] = true;
     return $dyn;
 }
+// document frequency + N
+function mp_docfreq(array $products) {
+    $df = []; $N = max(1, count($products));
+    foreach ($products as $p) {
+        $text = ((string)$p->ref).' '.((string)$p->label).' '.((string)$p->description);
+        foreach (array_unique(mp_tokens_basic($text)) as $t) $df[$t] = ($df[$t] ?? 0) + 1;
+    }
+    return [$df, $N];
+}
 function mp_tokens($text, array $dynStop = []) {
     $tokens = mp_tokens_basic($text);
     if (!$dynStop) return $tokens;
     $out = [];
     foreach ($tokens as $t) if (!isset($dynStop[$t])) $out[] = $t;
+    return array_values(array_unique($out));
+}
+function mp_rare_tokens($text, array $dynStop, array $df, int $N, float $maxFrac = 0.25) {
+    $tok = mp_tokens($text, $dynStop);
+    $out = [];
+    foreach ($tok as $t) {
+        $freq = ($df[$t] ?? 0) / max(1, $N);
+        if ($freq <= $maxFrac) $out[] = $t;
+    }
     return array_values(array_unique($out));
 }
 function mp_jaccard(array $a, array $b) {
@@ -156,7 +177,7 @@ function mp_load_products($limit = 2000, $use_limit = true) {
     $sql = "SELECT p.rowid, p.ref, p.label, p.description, p.barcode, p.tosell, p.tobuy, p.hidden, p.finished, p.datec
             FROM ".MAIN_DB_PREFIX."product p
             WHERE p.entity = ".((int) $conf->entity)."
-            ORDER BY p.datec DESC, p.rowid DESC";
+            ORDER BY p.rowid DESC";
     if ($use_limit) $sql .= " LIMIT ".((int)$limit);
     $res = $db->query($sql);
     if (!$res) return [];
@@ -181,7 +202,7 @@ function mp_load_products_by_filters($ids, $ref, $name, $desc, $ean) {
         $w[] = "(p.description LIKE '%$d%' OR p.label LIKE '%$d%' OR p.ref LIKE '%$d%')";
     }
     if ($ean !== '') { $e = $db->escape($ean);
-        $w[] = "(p.barcode LIKE '%$e%' OR p.label LIKE '%$e%' OR p.description LIKE '%$e%')";
+        $w[] = "(p.barcode LIKE '%$e%')";
     }
     $sql = "SELECT p.rowid, p.ref, p.label, p.description, p.barcode, p.tosell, p.tobuy, p.hidden, p.finished, p.datec
             FROM ".MAIN_DB_PREFIX."product p
@@ -191,21 +212,6 @@ function mp_load_products_by_filters($ids, $ref, $name, $desc, $ean) {
     if (!$res) return [];
     $out = [];
     while ($o = $db->fetch_object($res)) $out[] = $o;
-
-    // Asegurar IDs pedidas aunque no coincidan con otros filtros
-    if (!empty($ids)) {
-        $present = array_fill_keys(array_map(fn($p)=>(int)$p->rowid, $out), true);
-        $missing = [];
-        foreach ($ids as $id) if (!isset($present[$id])) $missing[] = (int)$id;
-        if (!empty($missing)) {
-            $in = implode(',', $missing);
-            $sql2 = "SELECT p.rowid, p.ref, p.label, p.description, p.barcode, p.tosell, p.tobuy, p.hidden, p.finished, p.datec
-                     FROM ".MAIN_DB_PREFIX."product p
-                     WHERE p.entity = ".((int)$conf->entity)." AND p.rowid IN ($in)";
-            $res2 = $db->query($sql2);
-            if ($res2) while ($o2 = $db->fetch_object($res2)) $out[] = $o2;
-        }
-    }
     return $out;
 }
 
@@ -213,17 +219,21 @@ function mp_load_products_by_filters($ids, $ref, $name, $desc, $ean) {
 class MPDuplicateDetector {
     private $products;   // array de objetos
     private $dynStop;    // stopwords dinámicas
-    // Umbrales
-    private $JACCARD_MIN = 0.75;
-    private $LEV_MIN     = 0.80;
-    private $SIMTXT_MIN  = 85;
+    private $df;         // document frequency
+    private $N;          // número de documentos
+    // Umbrales (equilibrados para reducir falsos positivos)
+    private $JACCARD_MIN = 0.78;
+    private $LEV_MIN     = 0.82;
+    private $SIMTXT_MIN  = 88;
 
     // Índices de bloqueo
     private $bucket = []; // key => list of idx
 
-    public function __construct(array $products, array $dynStop = []) {
+    public function __construct(array $products, array $dynStop, array $df, int $N) {
         $this->products = array_values($products);
         $this->dynStop  = $dynStop;
+        $this->df = $df;
+        $this->N  = $N;
         $this->buildBuckets();
     }
 
@@ -255,12 +265,12 @@ class MPDuplicateDetector {
                 $this->keypush('MOD:'.$code, $i);
             }
 
-            // Firma de tokens (bag limitada): top 5 tokens ordenados
-            $tokens = mp_tokens($p->ref.' '.$name.' '.$desc, $this->dynStop);
-            if ($tokens) {
-                sort($tokens, SORT_STRING);
-                $sig = implode('|', array_slice($tokens, 0, 5));
-                $this->keypush('SIG:'.$sig, $i);
+            // Firma de tokens RAROS: exige >=2 raros; evita "palabras comunes"
+            $rare = mp_rare_tokens($p->ref.' '.$name.' '.$desc, $this->dynStop, $this->df, $this->N, 0.25);
+            if (count($rare) >= 2) {
+                sort($rare, SORT_STRING);
+                $sig = implode('|', array_slice($rare, 0, 3));
+                $this->keypush('RSIG:'.$sig, $i);
             }
         }
     }
@@ -287,11 +297,10 @@ class MPDuplicateDetector {
         foreach (mp_extract_model_codes($p->ref.' '.$name) as $code) {
             $probeKeys[] = 'MOD:'.$code;
         }
-        $tokens = mp_tokens($p->ref.' '.$name.' '.$desc, $this->dynStop);
-        if ($tokens) {
-            sort($tokens, SORT_STRING);
-            $sig = implode('|', array_slice($tokens, 0, 5));
-            $probeKeys[] = 'SIG:'.$sig;
+        $rare = mp_rare_tokens($p->ref.' '.$name.' '.$desc, $this->dynStop, $this->df, $this->N, 0.25);
+        if (count($rare) >= 2) {
+            sort($rare, SORT_STRING);
+            $probeKeys[] = 'RSIG:'.implode('|', array_slice($rare, 0, 3));
         }
 
         foreach ($probeKeys as $k) {
@@ -322,8 +331,8 @@ class MPDuplicateDetector {
             if ($cands) {
                 foreach ($cands as $j) {
                     if (isset($used[$j])) continue;
-                if ($this->areDuplicates($this->products[$i], $this->products[$j])) {
-                    $group[] = $this->products[$j];
+                    if ($this->areDuplicates($this->products[$i], $this->products[$j])) {
+                        $group[] = $this->products[$j];
                         $used[$j] = true;
                     }
                 }
@@ -353,10 +362,10 @@ class MPDuplicateDetector {
         $canonA = trim(mp_normalize($a->ref.' '.$nameA.' '.$descA));
         $canonB = trim(mp_normalize($b->ref.' '.$nameB.' '.$descB));
 
-        // 1) EAN exacto
+        // 1) EAN exacto (ancla fuerte)
         if ($eanA !== '' && $eanA === $eanB) return true;
 
-        // 2) Ref exacta / contenida (≥4 chars)
+        // 2) Ref exacta / contenida (≥4 chars) (ancla fuerte)
         if ($refA !== '' && $refB !== '') {
             if ($refA === $refB) return true;
             if (strlen($refA) >= 4 && strlen($refB) >= 4) {
@@ -364,35 +373,48 @@ class MPDuplicateDetector {
             }
         }
 
-        // 3) Códigos de modelo
+        // 3) Códigos de modelo (ancla fuerte si son "serios": alfanuméricos y ≥4)
         $codesA = mp_extract_model_codes($a->ref.' '.$nameA);
         $codesB = mp_extract_model_codes($b->ref.' '.$nameB);
-        if ($codesA && $codesB && !empty(array_intersect($codesA, $codesB))) return true;
-        if ($codesA xor $codesB) {
-            $codes = $codesA ?: $codesB;
-            foreach ($codes as $c) if ($c !== '' && strpos(strtoupper($canonA.' '.$canonB), $c) !== false) return true;
+        $codesI = array_intersect($codesA, $codesB);
+        if (!empty($codesI)) {
+            foreach ($codesI as $c) {
+                if (strlen($c) >= 4 && preg_match('/[A-Z]/', $c) && preg_match('/\d/', $c)) {
+                    return true; // ejemplo: 520R
+                }
+            }
+            // si los códigos son cortos/ambiguos, pide una métrica suave
+            $lev_soft = mp_lev_ratio($canonA, $canonB);
+            $tA_soft = mp_tokens($a->ref.' '.$nameA.' '.$descA, $this->dynStop);
+            $tB_soft = mp_tokens($b->ref.' '.$nameB.' '.$descB, $this->dynStop);
+            $jac_soft = mp_jaccard($tA_soft, $tB_soft);
+            if ($jac_soft >= 0.65 || $lev_soft >= 0.76) return true;
         }
 
-        // 4) Subcadenas canon (≥8)
+        // 4) Subcadenas canon (≥8) — útil para nombres muy similares
         if (strlen($canonA) >= 8 && strlen($canonB) >= 8) {
             if (strpos($canonA, $canonB) !== false || strpos($canonB, $canonA) !== false) return true;
         }
 
-        // 5) Tokens + Jaccard
+        // 5) Rare tokens como guardarraíl contra palabras comunes
+        $rareA = mp_rare_tokens($a->ref.' '.$nameA.' '.$descA, $this->dynStop, $this->df, $this->N, 0.25);
+        $rareB = mp_rare_tokens($b->ref.' '.$nameB.' '.$descB, $this->dynStop, $this->df, $this->N, 0.25);
+        $rareI = array_intersect($rareA, $rareB);
+        $rareOK = count($rareI) >= 2;
+
+        // 6) Métricas (texto completo normalizado)
         $tA = mp_tokens($a->ref.' '.$nameA.' '.$descA, $this->dynStop);
         $tB = mp_tokens($b->ref.' '.$nameB.' '.$descB, $this->dynStop);
-        if ($tA && $tB) {
-            $jac = mp_jaccard($tA, $tB);
-            if ($jac >= $this->JACCARD_MIN) return true;
-        }
-
-        // 6) Levenshtein
+        $jac = mp_jaccard($tA, $tB);
         $lev = mp_lev_ratio($canonA, $canonB);
-        if ($lev >= $this->LEV_MIN) return true;
-
-        // 7) similar_text
         similar_text($canonA, $canonB, $pct);
-        if ($pct >= $this->SIMTXT_MIN) return true;
+
+        // 7) Caso general: requiere 2 señales + rare tokens
+        $signals = 0;
+        if ($jac >= $this->JACCARD_MIN) $signals++;
+        if ($lev >= $this->LEV_MIN)     $signals++;
+        if ($pct >= $this->SIMTXT_MIN)  $signals++;
+        if ($signals >= 2 && $rareOK)   return true;
 
         return false;
     }
@@ -414,9 +436,10 @@ $cache_key = md5(json_encode([
 if (!isset($_SESSION['dup_cache'])) $_SESSION['dup_cache'] = [];
 
 if (!isset($_SESSION['dup_cache'][$cache_key])) {
-    // Construye stopwords dinámicas y detecta duplicados una sola vez
+    // Construye stopwords dinámicas + DF y detecta duplicados una sola vez
     $dynStop = mp_dynamic_stopwords($filtered, 0.50);
-    $det = new MPDuplicateDetector($filtered, $dynStop);
+    list($DF, $NDF) = mp_docfreq($filtered);
+    $det = new MPDuplicateDetector($filtered, $dynStop, $DF, $NDF);
     $result = $det->separate();
 
     // Guardar sólo lo necesario en la cache
@@ -444,8 +467,10 @@ function paginate_array(array $arr, int $page, int $per_page) {
 
 if ($tab === 'unique') {
     [$uniq_page, $uniq_total, $page, $max_page] = paginate_array($uniq, $page, $per_page);
+    if (!isset($uniq_page)) $uniq_page = [];
 } else {
     [$dups_page, $dups_total, $page, $max_page] = paginate_array($dups, $page, $per_page);
+    if (!isset($dups_page)) $dups_page = [];
 }
 
 // ====== UI ======
@@ -690,12 +715,6 @@ input[type="text"]:focus, input[type="number"]:focus {
     background: #0056b3;
 }
 
-.content-tabs table {
-    margin: 0;
-    border-radius: 0;
-    box-shadow: none;
-}
-
 .content-tabs .pagination {
     margin: 10px 0;
     background: #f8f9fa;
@@ -842,44 +861,44 @@ if ($tab === 'unique') {
         print '<div class="no-data">📦 No se encontraron productos únicos</div>';
     } else {
         render_pager($base, 'unique', $page, $max_page);
-    print '<table class="noborder centpercent">';
+        print '<table class="noborder centpercent">';
         print '<tr class="liste_titre"><td style="width:6%">ID</td><td style="width:16%">Ref</td><td style="width:12%">EAN</td><td>Nombre</td><td style="width:10%">Acciones</td></tr>';
         foreach ($uniq_page as $p) {
-        print '<tr class="oddeven">';
+            print '<tr class="oddeven">';
             print '<td>'.(int)$p->rowid.'</td>';
             print '<td>'.dol_escape_htmltag($p->ref).'</td>';
             print '<td>'.dol_escape_htmltag($p->barcode).'</td>';
             print '<td>'.dol_escape_htmltag($p->label).'</td>';
             print '<td><a class="button" href="'.DOL_URL_ROOT.'/product/card.php?id='.(int)$p->rowid.'" target="_blank">Abrir</a></td>';
-        print '</tr>';
-    }
-    print '</table>';
+            print '</tr>';
+        }
+        print '</table>';
         render_pager($base, 'unique', $page, $max_page);
     }
 } else {
     if (empty($dups_page)) {
         print '<div class="no-data">🔄 No se encontraron duplicados</div>';
-} else {
+    } else {
         render_pager($base, 'duplicates', $page, $max_page);
         $start = ($page - 1) * $per_page;
         foreach ($dups_page as $k => $group) {
             $idx = $start + $k + 1;
             print '<div class="group-duplicate">';
             print '<h4>🔄 Grupo de Duplicados #'.$idx.' ('.count($group).' productos)</h4>';
-        print '<table class="noborder centpercent">';
+            print '<table class="noborder centpercent">';
             print '<tr class="liste_titre"><td style="width:6%">ID</td><td style="width:16%">Ref</td><td style="width:12%">EAN</td><td>Nombre</td><td style="width:10%">Acciones</td></tr>';
             foreach ($group as $p) {
-            print '<tr class="oddeven">';
+                print '<tr class="oddeven">';
                 print '<td>'.(int)$p->rowid.'</td>';
                 print '<td>'.dol_escape_htmltag($p->ref).'</td>';
                 print '<td>'.dol_escape_htmltag($p->barcode).'</td>';
                 print '<td>'.dol_escape_htmltag($p->label).'</td>';
                 print '<td><a class="button" href="'.DOL_URL_ROOT.'/product/card.php?id='.(int)$p->rowid.'" target="_blank">Abrir</a></td>';
-            print '</tr>';
+                print '</tr>';
+            }
+            print '</table>';
+            print '</div>';
         }
-        print '</table>';
-        print '</div>';
-    }
         render_pager($base, 'duplicates', $page, $max_page);
     }
 }
