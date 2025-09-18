@@ -34,8 +34,13 @@ $product_ean         = trim((string) GETPOST('product_ean', 'restricthtml'));
 $limit               = (int) GETPOST('limit', 'int');
 if ($limit < 200 || $limit > 50000) $limit = 2000;
 
-$tab                 = GETPOST('tab', 'alphanohtml', 'duplicates');
+$tab                 = GETPOST('tab', 'alphanohtml');
 if ($tab !== 'unique' && $tab !== 'duplicates') $tab = 'duplicates';
+
+// Debug temporal
+if (isset($_GET['debug'])) {
+    echo "<!-- DEBUG: tab = '$tab', GET = " . print_r($_GET, true) . " -->";
+}
 
 $page                = max(1, (int) GETPOST('page', 'int'));
 $per_page            = (int) GETPOST('per_page', 'int');
@@ -468,9 +473,17 @@ function paginate_array(array $arr, int $page, int $per_page) {
 if ($tab === 'unique') {
     [$uniq_page, $uniq_total, $page, $max_page] = paginate_array($uniq, $page, $per_page);
     if (!isset($uniq_page)) $uniq_page = [];
+    // Debug temporal
+    if (isset($_GET['debug'])) {
+        echo "<!-- DEBUG UNIQUE: count(uniq) = " . count($uniq) . ", count(uniq_page) = " . count($uniq_page) . " -->";
+    }
 } else {
     [$dups_page, $dups_total, $page, $max_page] = paginate_array($dups, $page, $per_page);
     if (!isset($dups_page)) $dups_page = [];
+    // Debug temporal
+    if (isset($_GET['debug'])) {
+        echo "<!-- DEBUG DUPLICATES: count(dups) = " . count($dups) . ", count(dups_page) = " . count($dups_page) . " -->";
+    }
 }
 
 // ====== UI ======
