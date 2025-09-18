@@ -10,7 +10,7 @@
 
 // ====== Entorno Dolibarr ======
 if (!defined('DOL_DOCUMENT_ROOT')) {
-    $res = 0;
+$res = 0;
     if (!$res && file_exists("../main.inc.php")) $res = @include "../main.inc.php";
     if (!$res && file_exists("../../main.inc.php")) $res = @include "../../main.inc.php";
     if (!$res && file_exists("../../../main.inc.php")) $res = @include "../../../main.inc.php";
@@ -35,7 +35,7 @@ $limit               = (int) GETPOST('limit', 'int');
 if ($limit < 200 || $limit > 50000) $limit = 2000;
 
 $tab                 = GETPOST('tab', 'alphanohtml');
-if ($tab !== 'unique' && $tab !== 'duplicates') $tab = 'duplicates';
+if ($tab !== 'unique' && $tab !== 'possible' && $tab !== 'confirmed') $tab = 'confirmed';
 
 // Debug temporal
 if (isset($_GET['debug'])) {
@@ -321,8 +321,9 @@ class MPDuplicateDetector {
     }
 
     public function separate() {
-        $dups = [];
-        $uniq = [];
+        $confirmed_dups = [];  // Duplicados confirmados (alta confianza)
+        $possible_dups = [];   // Posibles duplicados (media confianza)
+        $unique = [];          // Productos únicos
         $used = [];
 
         $n = count($this->products);
@@ -331,28 +332,42 @@ class MPDuplicateDetector {
 
             $group = [$this->products[$i]];
             $used[$i] = true;
+            $confidence_level = 'none';
 
             $cands = $this->candidatesFor($i);
             if ($cands) {
                 foreach ($cands as $j) {
                     if (isset($used[$j])) continue;
-                    if ($this->areDuplicates($this->products[$i], $this->products[$j])) {
-                        $group[] = $this->products[$j];
+                    $dup_result = $this->areDuplicates($this->products[$i], $this->products[$j]);
+                    if ($dup_result['is_duplicate']) {
+                    $group[] = $this->products[$j];
                         $used[$j] = true;
+                        $confidence_level = $dup_result['confidence'];
                     }
                 }
             }
 
-            if (count($group) > 1) $dups[] = $group;
-            else $uniq[] = $group[0];
+            if (count($group) > 1) {
+                if ($confidence_level === 'high') {
+                    $confirmed_dups[] = $group;
+                } else {
+                    $possible_dups[] = $group;
+                }
+            } else {
+                $unique[] = $group[0];
+            }
         }
 
-        return ['duplicates' => $dups, 'unique' => $uniq];
+        return [
+            'confirmed_duplicates' => $confirmed_dups,
+            'possible_duplicates' => $possible_dups,
+            'unique' => $unique
+        ];
     }
 
     private function areDuplicates($a, $b) {
         // Early check diferentes IDs
-        if ((int)$a->rowid === (int)$b->rowid) return false;
+        if ((int)$a->rowid === (int)$b->rowid) return ['is_duplicate' => false, 'confidence' => 'none'];
 
         $refA = mp_normalize_code($a->ref);
         $refB = mp_normalize_code($b->ref);
@@ -367,61 +382,93 @@ class MPDuplicateDetector {
         $canonA = trim(mp_normalize($a->ref.' '.$nameA.' '.$descA));
         $canonB = trim(mp_normalize($b->ref.' '.$nameB.' '.$descB));
 
-        // 1) EAN exacto (ancla fuerte)
-        if ($eanA !== '' && $eanA === $eanB) return true;
-
-        // 2) Ref exacta / contenida (≥4 chars) (ancla fuerte)
-        if ($refA !== '' && $refB !== '') {
-            if ($refA === $refB) return true;
-            if (strlen($refA) >= 4 && strlen($refB) >= 4) {
-                if (strpos($refA, $refB) !== false || strpos($refB, $refA) !== false) return true;
-            }
+        // ALTA CONFIANZA - Duplicados confirmados
+        // 1) EAN exacto (ancla muy fuerte)
+        if ($eanA !== '' && $eanA === $eanB) {
+            return ['is_duplicate' => true, 'confidence' => 'high', 'reason' => 'EAN idéntico'];
         }
 
-        // 3) Códigos de modelo (ancla fuerte si son "serios": alfanuméricos y ≥4)
+        // 2) Referencia exacta (ancla muy fuerte)
+        if ($refA !== '' && $refB !== '' && $refA === $refB) {
+            return ['is_duplicate' => true, 'confidence' => 'high', 'reason' => 'Referencia idéntica'];
+        }
+
+        // 3) Códigos de modelo alfanuméricos idénticos (≥4 chars)
         $codesA = mp_extract_model_codes($a->ref.' '.$nameA);
         $codesB = mp_extract_model_codes($b->ref.' '.$nameB);
         $codesI = array_intersect($codesA, $codesB);
         if (!empty($codesI)) {
             foreach ($codesI as $c) {
                 if (strlen($c) >= 4 && preg_match('/[A-Z]/', $c) && preg_match('/\d/', $c)) {
-                    return true; // ejemplo: 520R
+                    return ['is_duplicate' => true, 'confidence' => 'high', 'reason' => 'Código modelo idéntico: ' . $c];
                 }
             }
-            // si los códigos son cortos/ambiguos, pide una métrica suave
+        }
+
+        // 4) Referencia contenida (≥6 chars para ser más estricto)
+        if ($refA !== '' && $refB !== '' && strlen($refA) >= 6 && strlen($refB) >= 6) {
+            if (strpos($refA, $refB) !== false || strpos($refB, $refA) !== false) {
+                return ['is_duplicate' => true, 'confidence' => 'high', 'reason' => 'Referencia contenida'];
+            }
+        }
+
+        // 5) Subcadenas canon muy largas (≥12 chars)
+        if (strlen($canonA) >= 12 && strlen($canonB) >= 12) {
+            if (strpos($canonA, $canonB) !== false || strpos($canonB, $canonA) !== false) {
+                return ['is_duplicate' => true, 'confidence' => 'high', 'reason' => 'Texto muy similar'];
+            }
+        }
+
+        // MEDIA CONFIANZA - Posibles duplicados
+        // 6) Códigos de modelo con métricas suaves
+        if (!empty($codesI)) {
             $lev_soft = mp_lev_ratio($canonA, $canonB);
             $tA_soft = mp_tokens($a->ref.' '.$nameA.' '.$descA, $this->dynStop);
             $tB_soft = mp_tokens($b->ref.' '.$nameB.' '.$descB, $this->dynStop);
             $jac_soft = mp_jaccard($tA_soft, $tB_soft);
-            if ($jac_soft >= 0.65 || $lev_soft >= 0.76) return true;
+            if ($jac_soft >= 0.70 || $lev_soft >= 0.80) {
+                return ['is_duplicate' => true, 'confidence' => 'medium', 'reason' => 'Código modelo con similitud'];
+            }
         }
 
-        // 4) Subcadenas canon (≥8) — útil para nombres muy similares
-        if (strlen($canonA) >= 8 && strlen($canonB) >= 8) {
-            if (strpos($canonA, $canonB) !== false || strpos($canonB, $canonA) !== false) return true;
+        // 7) Referencia contenida más corta (4-5 chars)
+        if ($refA !== '' && $refB !== '' && strlen($refA) >= 4 && strlen($refB) >= 4 && strlen($refA) < 6) {
+            if (strpos($refA, $refB) !== false || strpos($refB, $refA) !== false) {
+                return ['is_duplicate' => true, 'confidence' => 'medium', 'reason' => 'Referencia corta contenida'];
+            }
         }
 
-        // 5) Rare tokens como guardarraíl contra palabras comunes
-        $rareA = mp_rare_tokens($a->ref.' '.$nameA.' '.$descA, $this->dynStop, $this->df, $this->N, 0.25);
-        $rareB = mp_rare_tokens($b->ref.' '.$nameB.' '.$descB, $this->dynStop, $this->df, $this->N, 0.25);
+        // 8) Subcadenas canon medianas (8-11 chars)
+        if (strlen($canonA) >= 8 && strlen($canonB) >= 8 && strlen($canonA) < 12) {
+            if (strpos($canonA, $canonB) !== false || strpos($canonB, $canonA) !== false) {
+                return ['is_duplicate' => true, 'confidence' => 'medium', 'reason' => 'Texto medianamente similar'];
+            }
+        }
+
+        // 9) Métricas con rare tokens (más estricto)
+        $rareA = mp_rare_tokens($a->ref.' '.$nameA.' '.$descA, $this->dynStop, $this->df, $this->N, 0.20);
+        $rareB = mp_rare_tokens($b->ref.' '.$nameB.' '.$descB, $this->dynStop, $this->df, $this->N, 0.20);
         $rareI = array_intersect($rareA, $rareB);
-        $rareOK = count($rareI) >= 2;
+        $rareOK = count($rareI) >= 3; // Más estricto: requiere 3 tokens raros
 
-        // 6) Métricas (texto completo normalizado)
         $tA = mp_tokens($a->ref.' '.$nameA.' '.$descA, $this->dynStop);
         $tB = mp_tokens($b->ref.' '.$nameB.' '.$descB, $this->dynStop);
         $jac = mp_jaccard($tA, $tB);
         $lev = mp_lev_ratio($canonA, $canonB);
         similar_text($canonA, $canonB, $pct);
 
-        // 7) Caso general: requiere 2 señales + rare tokens
-        $signals = 0;
-        if ($jac >= $this->JACCARD_MIN) $signals++;
-        if ($lev >= $this->LEV_MIN)     $signals++;
-        if ($pct >= $this->SIMTXT_MIN)  $signals++;
-        if ($signals >= 2 && $rareOK)   return true;
+        // 10) Métricas muy altas + rare tokens
+        if ($rareOK) {
+            $signals = 0;
+            if ($jac >= 0.85) $signals++; // Más estricto
+            if ($lev >= 0.90) $signals++; // Más estricto
+            if ($pct >= 95) $signals++;   // Más estricto
+            if ($signals >= 2) {
+                return ['is_duplicate' => true, 'confidence' => 'medium', 'reason' => 'Métricas altas + tokens raros'];
+            }
+        }
 
-        return false;
+        return ['is_duplicate' => false, 'confidence' => 'none'];
     }
 }
 
@@ -450,13 +497,15 @@ if (!isset($_SESSION['dup_cache'][$cache_key])) {
     // Guardar sólo lo necesario en la cache
     $_SESSION['dup_cache'][$cache_key] = [
         'generated_at' => time(),
-        'dups'  => $result['duplicates'],
+        'confirmed_dups' => $result['confirmed_duplicates'],
+        'possible_dups' => $result['possible_duplicates'],
         'uniq'  => $result['unique'],
         'count_filtered' => count($filtered)
     ];
 }
 
-$dups  = $_SESSION['dup_cache'][$cache_key]['dups'];
+$confirmed_dups = $_SESSION['dup_cache'][$cache_key]['confirmed_dups'];
+$possible_dups = $_SESSION['dup_cache'][$cache_key]['possible_dups'];
 $uniq  = $_SESSION['dup_cache'][$cache_key]['uniq'];
 $count_filtered = $_SESSION['dup_cache'][$cache_key]['count_filtered'];
 
@@ -473,17 +522,12 @@ function paginate_array(array $arr, int $page, int $per_page) {
 if ($tab === 'unique') {
     [$uniq_page, $uniq_total, $page, $max_page] = paginate_array($uniq, $page, $per_page);
     if (!isset($uniq_page)) $uniq_page = [];
-    // Debug temporal
-    if (isset($_GET['debug'])) {
-        echo "<!-- DEBUG UNIQUE: count(uniq) = " . count($uniq) . ", count(uniq_page) = " . count($uniq_page) . " -->";
-    }
-} else {
-    [$dups_page, $dups_total, $page, $max_page] = paginate_array($dups, $page, $per_page);
-    if (!isset($dups_page)) $dups_page = [];
-    // Debug temporal
-    if (isset($_GET['debug'])) {
-        echo "<!-- DEBUG DUPLICATES: count(dups) = " . count($dups) . ", count(dups_page) = " . count($dups_page) . " -->";
-    }
+} elseif ($tab === 'possible') {
+    [$possible_page, $possible_total, $page, $max_page] = paginate_array($possible_dups, $page, $per_page);
+    if (!isset($possible_page)) $possible_page = [];
+} else { // confirmed duplicates
+    [$confirmed_page, $confirmed_total, $page, $max_page] = paginate_array($confirmed_dups, $page, $per_page);
+    if (!isset($confirmed_page)) $confirmed_page = [];
 }
 
 // ====== UI ======
@@ -843,14 +887,15 @@ print '</div>'; // Cerrar search-form-container
 // Contenedor de pestañas
 print '<div class="tabs-container">';
 print '<div class="stats-bar">';
-print '📊 Cargados: <strong>'.$count_filtered.'</strong> · Duplicados: <strong>'.count($dups).'</strong> grupos · Únicos: <strong>'.count($uniq).'</strong>';
+print '📊 Cargados: <strong>'.$count_filtered.'</strong> · Confirmados: <strong>'.count($confirmed_dups).'</strong> · Posibles: <strong>'.count($possible_dups).'</strong> · Únicos: <strong>'.count($uniq).'</strong>';
 print '</div>';
 
 print '<div class="tabsAction">';
 $base = dol_escape_htmltag($_SERVER["PHP_SELF"]).'?per_page='.$per_page.'&limit='.$limit.'&product_id='.urlencode($product_id_raw).
         '&product_ean='.urlencode($product_ean).'&product_ref='.urlencode($product_ref).'&product_name='.urlencode($product_name);
 print '<a class="butAction'.($tab==='unique'?'Refused':'').'" href="'.$base.'&tab=unique&page=1">📦 Únicos ('.count($uniq).')</a> ';
-print '<a class="butAction'.($tab==='duplicates'?'Refused':'').'" href="'.$base.'&tab=duplicates&page=1">🔄 Duplicados ('.count($dups).')</a>';
+print '<a class="butAction'.($tab==='possible'?'Refused':'').'" href="'.$base.'&tab=possible&page=1">⚠️ Posibles ('.count($possible_dups).')</a> ';
+print '<a class="butAction'.($tab==='confirmed'?'Refused':'').'" href="'.$base.'&tab=confirmed&page=1">✅ Confirmados ('.count($confirmed_dups).')</a>';
 print '</div>';
 
 // Render con paginación
@@ -873,8 +918,9 @@ print '<div class="content-tabs">';
 if (isset($_GET['debug'])) {
     print '<div style="background: #ffeb3b; padding: 10px; margin: 10px 0; border: 2px solid #f57f17;">';
     print '<strong>DEBUG:</strong> Pestaña actual = "' . $tab . '" | ';
-    print 'Productos únicos = ' . count($uniq) . ' | ';
-    print 'Productos duplicados = ' . count($dups);
+    print 'Únicos = ' . count($uniq) . ' | ';
+    print 'Posibles = ' . count($possible_dups) . ' | ';
+    print 'Confirmados = ' . count($confirmed_dups);
     print '</div>';
 }
     
@@ -897,16 +943,16 @@ if ($tab === 'unique') {
         print '</table>';
         render_pager($base, 'unique', $page, $max_page);
     }
-} else {
-    if (empty($dups_page)) {
-        print '<div class="no-data">🔄 No se encontraron duplicados</div>';
+} elseif ($tab === 'possible') {
+    if (empty($possible_page) || count($possible_page) == 0) {
+        print '<div class="no-data">⚠️ No se encontraron posibles duplicados</div>';
     } else {
-        render_pager($base, 'duplicates', $page, $max_page);
+        render_pager($base, 'possible', $page, $max_page);
         $start = ($page - 1) * $per_page;
-        foreach ($dups_page as $k => $group) {
+        foreach ($possible_page as $k => $group) {
             $idx = $start + $k + 1;
-            print '<div class="group-duplicate">';
-            print '<h4>🔄 Grupo de Duplicados #'.$idx.' ('.count($group).' productos)</h4>';
+            print '<div class="group-duplicate" style="background: #fff3cd; border-color: #ffeaa7;">';
+            print '<h4>⚠️ Posible Grupo #'.$idx.' ('.count($group).' productos) - Revisar</h4>';
             print '<table class="noborder centpercent">';
             print '<tr class="liste_titre"><td style="width:6%">ID</td><td style="width:16%">Ref</td><td style="width:12%">EAN</td><td>Nombre</td><td style="width:10%">Acciones</td></tr>';
             foreach ($group as $p) {
@@ -921,7 +967,33 @@ if ($tab === 'unique') {
             print '</table>';
             print '</div>';
         }
-        render_pager($base, 'duplicates', $page, $max_page);
+        render_pager($base, 'possible', $page, $max_page);
+    }
+} else { // confirmed duplicates
+    if (empty($confirmed_page) || count($confirmed_page) == 0) {
+        print '<div class="no-data">✅ No se encontraron duplicados confirmados</div>';
+    } else {
+        render_pager($base, 'confirmed', $page, $max_page);
+        $start = ($page - 1) * $per_page;
+        foreach ($confirmed_page as $k => $group) {
+            $idx = $start + $k + 1;
+            print '<div class="group-duplicate" style="background: #f8d7da; border-color: #f5c6cb;">';
+            print '<h4>✅ Duplicado Confirmado #'.$idx.' ('.count($group).' productos) - Acción Requerida</h4>';
+            print '<table class="noborder centpercent">';
+            print '<tr class="liste_titre"><td style="width:6%">ID</td><td style="width:16%">Ref</td><td style="width:12%">EAN</td><td>Nombre</td><td style="width:10%">Acciones</td></tr>';
+            foreach ($group as $p) {
+                print '<tr class="oddeven">';
+                print '<td>'.(int)$p->rowid.'</td>';
+                print '<td>'.dol_escape_htmltag($p->ref).'</td>';
+                print '<td>'.dol_escape_htmltag($p->barcode).'</td>';
+                print '<td>'.dol_escape_htmltag($p->label).'</td>';
+                print '<td><a class="button" href="'.DOL_URL_ROOT.'/product/card.php?id='.(int)$p->rowid.'" target="_blank">Abrir</a></td>';
+                print '</tr>';
+            }
+            print '</table>';
+            print '</div>';
+        }
+        render_pager($base, 'confirmed', $page, $max_page);
     }
 }
 
