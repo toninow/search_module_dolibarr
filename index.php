@@ -868,9 +868,18 @@ function render_pager($base, $tab, $page, $max_page) {
 
 // Contenido de las pestañas
 print '<div class="content-tabs">';
+
+// Debug visible temporal
+if (isset($_GET['debug'])) {
+    print '<div style="background: #ffeb3b; padding: 10px; margin: 10px 0; border: 2px solid #f57f17;">';
+    print '<strong>DEBUG:</strong> Pestaña actual = "' . $tab . '" | ';
+    print 'Productos únicos = ' . count($uniq) . ' | ';
+    print 'Productos duplicados = ' . count($dups);
+    print '</div>';
+}
     
 if ($tab === 'unique') {
-    if (empty($uniq_page)) {
+    if (empty($uniq_page) || count($uniq_page) == 0) {
         print '<div class="no-data">📦 No se encontraron productos únicos</div>';
     } else {
         render_pager($base, 'unique', $page, $max_page);
